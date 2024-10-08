@@ -6,11 +6,13 @@ import drizzle_icon from '../assets/drizzle.png';
 import rain_icon from '../assets/rain.png';
 import snow_icon from '../assets/snow.png';
 import wind_icon from '../assets/wind.png';
-import humidity_icon from '../assets/humidity.png';
+import humidity_icon from '../assets/humidity.png'; // Adding icons for humidity and wind
 
 const Weather = () => {
   const inputRef = useRef();
   const [weatherData, setWeatherData] = useState(false);
+  const [forecastData, setForecastData] = useState([]);
+  const [isDay, setIsDay] = useState(true); // Track if it’s day or night
 
   const allIcons = {
     '01d': clear_icon,
@@ -29,14 +31,40 @@ const Weather = () => {
     '13n': snow_icon,
   };
 
+  // Function to group forecast data by day
+  const groupForecastByDay = (list) => {
+    const dailyData = {};
+    list.forEach((item) => {
+      const date = new Date(item.dt_txt).toLocaleDateString('en-US', { weekday: 'long' });
+      if (!dailyData[date]) {
+        dailyData[date] = {
+          temps: [],
+          humidity: [],
+          windSpeed: [],
+          weatherIcon: item.weather[0].icon,
+        };
+      }
+      dailyData[date].temps.push(item.main.temp);
+      dailyData[date].humidity.push(item.main.humidity);
+      dailyData[date].windSpeed.push(item.wind.speed);
+    });
+
+    return Object.keys(dailyData).map((date) => ({
+      date,
+      temperature: (Math.max(...dailyData[date].temps) - 273.15).toFixed(2),
+      humidity: Math.max(...dailyData[date].humidity),
+      windSpeed: Math.max(...dailyData[date].windSpeed),
+      icon: allIcons[dailyData[date].weatherIcon] || clear_icon,
+    }));
+  };
+
   const search = async (city) => {
     if (city === '') {
       alert('Enter city name');
       return;
     }
     try {
-      const url = `https://api.openweathermap.org/data/2.5/weather?q=${city}&appid=${import.meta.env.VITE_APP_ID}`;
-
+      const url = `https://api.openweathermap.org/data/2.5/forecast?q=${city}&appid=${import.meta.env.VITE_APP_ID}`;
       const response = await fetch(url);
       const data = await response.json();
 
@@ -45,16 +73,25 @@ const Weather = () => {
         return;
       }
 
-      const icon = allIcons[data.weather[0].icon] || clear_icon;
+      // Current weather data
+      const weatherIcon = data.list[0].weather[0].icon;
+      const icon = allIcons[weatherIcon] || clear_icon;
+      setIsDay(weatherIcon.includes('d')); // Check if day (d) or night (n)
+
       setWeatherData({
-        location: data.name,
-        temperature: (data.main.temp - 273.15).toFixed(2),
+        location: data.city.name,
+        temperature: (data.list[0].main.temp - 273.15).toFixed(2),
         icon: icon,
-        humidity: data.main.humidity,
-        windSpeed: data.wind.speed,
+        humidity: data.list[0].main.humidity,
+        windSpeed: data.list[0].wind.speed,
       });
+
+      // Forecast data
+      const forecast = groupForecastByDay(data.list);
+      setForecastData(forecast.slice(1, 5)); // Show only the next 4 days
     } catch (error) {
       setWeatherData(false);
+      setForecastData([]);
       console.log('Error in fetching weather data');
     }
   };
@@ -64,52 +101,88 @@ const Weather = () => {
   }, []);
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-purple-400">
-      <div className="bg-gradient-to-b from-purple-600 to-blue-500 rounded-2xl p-8 shadow-lg text-white w-80">
-        <div className="flex items-center justify-between mb-6">
+    <div
+      className={`flex flex-col items-center justify-center min-h-screen ${
+        isDay ? 'bg-blue-400' : 'bg-gray-800'
+      } space-y-8 p-6`}
+    >
+      {/* Today's Weather + Search */}
+      <div
+        className={`${
+          isDay ? 'bg-gradient-to-b from-blue-600 to-blue-500' : 'bg-gradient-to-b from-gray-900 to-gray-700'
+        } rounded-2xl p-8 shadow-lg text-white w-96 space-y-4`}
+      >
+        {/* Search Bar */}
+        <div className="flex items-center space-x-2 mb-6">
           <input
             ref={inputRef}
             type="text"
-            placeholder="City Name"
-            className="w-full py-2 px-4 rounded-full  text-black focus:outline-none"
+            placeholder="Search City"
+            className="w-full py-2 px-4 rounded-l-full text-black focus:outline-none"
           />
-          <img
-            src={search_icon}
-            alt="Search"
-            className="ml-2 h-10 w-10 cursor-pointer rounded-full bg-white p-2"
+          <button
+            className="bg-white rounded-r-full p-2"
             onClick={() => search(inputRef.current.value)}
-          />
+          >
+            <img src={search_icon} alt="Search" className="h-6 w-6" />
+          </button>
         </div>
 
-        {weatherData ? (
-          <>
-            <div className="flex flex-col items-center mb-6">
-              <img src={weatherData.icon} alt="Weather Icon" className="h-24 w-24 mb-4" />
-              <p className="text-6xl font-bold mb-2">{weatherData.temperature}°C</p>
-              <p className="text-2xl">{weatherData.location}</p>
-            </div>
-
-            <div className="flex justify-between text-base text-gray-200 mt-6">
-              <div className="flex items-center space-x-4">
-                <img src={humidity_icon} alt="Humidity" className="h-8 w-8" />
-                <div className="flex flex-col whitespace-nowrap">
-                  <span className="text-lg">{weatherData.humidity}%</span>
-                  <p className="text-md text-gray-300">Humidity</p>
+        {/* Current Weather */}
+        {weatherData && (
+          <div className="text-center">
+            <h2 className="text-2xl font-bold">{weatherData.location}</h2>
+            <img src={weatherData.icon} alt="Weather Icon" className="h-24 mx-auto mb-4" />
+            <p className="text-6xl font-bold">{weatherData.temperature}°C</p>
+            <div className="flex justify-around mt-4">
+              <div className="flex items-center space-x-2">
+                <img src={humidity_icon} alt="Humidity" className="h-6 w-6" />
+                <div>
+                  <p className="font-semibold">Humidity</p>
+                  <p>{weatherData.humidity}%</p>
                 </div>
               </div>
-
-              <div className="flex items-center space-x-4 ml-4 whitespace-nowrap">
-                <img src={wind_icon} alt="Wind Speed" className="h-8 w-8" />
-                <div className="flex flex-col">
-                  <span className="text-lg">{weatherData.windSpeed} km/h</span>
-                  <p className="text-md text-gray-300">Wind Speed</p>
+              <div className="flex items-center space-x-2">
+                <img src={wind_icon} alt="Wind" className="h-6 w-6" />
+                <div>
+                  <p className="font-semibold">Wind Speed</p>
+                  <p>{weatherData.windSpeed} km/h</p>
                 </div>
               </div>
             </div>
-          </>
-        ) : (
-          <div className="text-center">No data available</div>
+          </div>
         )}
+      </div>
+
+      {/* 4-Day Forecast */}
+      <div className="w-full max-w-4xl space-y-4">
+        <h2 className="text-xl font-bold text-white text-center mb-4">Next 4-Day Forecast</h2>
+        <div className="flex justify-center space-x-4 overflow-x-auto">
+          {forecastData.map((day, index) => (
+            <div
+              key={index}
+              className={`${
+                isDay ? 'bg-gradient-to-b from-blue-500 to-purple-600' : 'bg-gradient-to-b from-gray-800 to-gray-600'
+              } rounded-lg p-6 shadow-lg text-white w-48 flex-shrink-0`}
+            >
+              <p className="text-lg font-semibold mb-2 text-center">{day.date}</p>
+              <img src={day.icon} alt="Weather Icon" className="h-16 mx-auto my-4" />
+              <p className="text-4xl font-bold mb-2">{day.temperature}°C</p>
+              <div className="flex justify-between mt-2">
+                <div className="flex flex-col items-center">
+                  <img src={humidity_icon} alt="Humidity" className="h-6 w-6 mb-1" />
+                  <p className="font-semibold">Humidity</p>
+                  <p>{day.humidity}%</p>
+                </div>
+                <div className="flex flex-col items-center">
+                  <img src={wind_icon} alt="Wind" className="h-6 w-6 mb-1" />
+                  <p className="font-semibold">Wind</p>
+                  <p>{day.windSpeed} km/h</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
